@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>For You ♥</title>
+<style>
+  /* ============================================================
+     ====================  CONFIGURABLE STYLE  ==================
+     ============================================================ */
+  :root{
+    /* Background gradient (dark violet -> midnight black) */
+    --bg-top:    #2a0a45;
+    --bg-mid:    #15052b;
+    --bg-bottom: #050008;
+
+    /* Accent colors used in the lock UI */
+    --accent:      #ff5fa2;   /* neon pink   */
+    --accent-soft: #c77dff;   /* soft purple */
+    --gold:        #ffcf6b;   /* warm gold   */
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  html,body{ width:100%; height:100%; overflow:hidden; }
+  body{
+    font-family:'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+    background:
+      radial-gradient(circle at 50% 18%, var(--bg-top) 0%, var(--bg-mid) 45%, var(--bg-bottom) 100%);
+    color:#fff;
+    position:relative;
+    user-select:none;
+    touch-action:none;
+  }
+
+  /* ---------------- Twinkling star / dust field ---------------- */
+  #stars{ position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+  .star{
+    position:absolute;
+    border-radius:50%;
+    background:#fff;
+    opacity:0;
+    animation:twinkle linear infinite;
+    box-shadow:0 0 6px rgba(255,255,255,.8);
+  }
+  @keyframes twinkle{
+    0%,100%{ opacity:0;   transform:scale(.5); }
+    50%    { opacity:.9;  transform:scale(1); }
+  }
+  /* slow drifting dust layer */
+  .dust{
+    position:absolute; border-radius:50%;
+    background:radial-gradient(circle, rgba(199,125,255,.6), transparent 70%);
+    animation:drift linear infinite;
+    filter:blur(1px);
+  }
+  @keyframes drift{
+    from{ transform:translateY(0) translateX(0); opacity:0; }
+    10% { opacity:.5; }
+    90% { opacity:.5; }
+    to  { transform:translateY(-120vh) translateX(30px); opacity:0; }
+  }
+
+  /* --------------- Pink doodle-hearts wallpaper --------------- */
+  #heartsBg{
+    position:fixed; inset:0; z-index:1;
+    overflow:hidden;
+    /* Soft romantic pink base (matches the reference wallpaper) */
+    background:linear-gradient(170deg, #f7b6c2 0%, #f2a3b2 55%, #ed97a9 100%);
+    transition:opacity 1.1s ease;
+  }
+  #heartsBg.hidden{ opacity:0; pointer-events:none; }
+  .doodle{
+    position:absolute;
+    width:74px; height:74px;
+    transform-origin:center;
+    animation:beat ease-in-out infinite;
+    will-change:transform, opacity;
+  }
+  .doodle svg{ width:100%; height:100%; display:block; overflow:visible; }
+  /* Gentle "heartbeat" breathing for every doodle heart */
+  @keyframes beat{
+    0%,100%{ transform:scale(.92) rotate(var(--rot)); opacity:.85; }
+    50%    { transform:scale(1.06) rotate(var(--rot)); opacity:1; }
+  }
+
+  /* -------------------- Music toggle button ------------------- */
+  #musicBtn{
+    position:fixed; top:18px; right:18px; z-index:20;
+    width:52px; height:52px;
+    border:none; cursor:pointer; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(255,255,255,.22);
+    box-shadow:0 4px 16px rgba(180,30,60,.35), 0 0 0 1px rgba(255,255,255,.35) inset;
+    backdrop-filter:blur(4px);
+    transition:transform .15s ease, background .25s ease;
+  }
+  #musicBtn:hover{ transform:scale(1.08); background:rgba(255,255,255,.35); }
+  #musicBtn:active{ transform:scale(.92); }
+  #musicBtn svg{ width:26px; height:26px; }
+  /* Off state = hollow outline heart */
+  #musicBtn svg path{
+    fill:none; stroke:#b81d3a; stroke-width:2;
+    transition:fill .25s ease;
+  }
+  /* On state = filled, glowing, beating heart */
+  #musicBtn.playing svg path{ fill:#e23b4a; stroke:#e23b4a; }
+  #musicBtn.playing{ animation:btnBeat 1s ease-in-out infinite; }
+  @keyframes btnBeat{
+    0%,100%{ transform:scale(1); }
+    25%    { transform:scale(1.14); }
+    40%    { transform:scale(1); }
+  }
+
+  /* ----------------------- Lock screen ------------------------ */
+  #lockScreen{
+    position:fixed; inset:0; z-index:5;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    gap:32px; padding:24px;
+    transition:opacity 1.1s ease, transform 1.1s ease;
+  }
+  #lockScreen.hidden{ opacity:0; transform:scale(1.06); pointer-events:none; }
+
+  .hint{
+    max-width:520px; text-align:center;
+    font-size:clamp(15px, 4.4vw, 20px);
+    font-weight:500; line-height:1.55;
+    color:#7a1530;
+    text-shadow:0 1px 10px rgba(255,255,255,.7);
+    letter-spacing:.3px;
+  }
+  .hint b{ color:#b81d3a; font-weight:700; }
+
+  /* The lock body */
+  .lock{
+    position:relative;
+    padding:26px 22px 30px;
+    border-radius:26px;
+    background:linear-gradient(160deg, rgba(60,25,90,.55), rgba(20,5,40,.65));
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.08) inset,
+      0 18px 50px rgba(0,0,0,.55),
+      0 0 60px rgba(255,95,162,.25);
+    backdrop-filter:blur(6px);
+    transition:box-shadow .35s ease;
+  }
+  .lock.success{
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.2) inset,
+      0 0 90px rgba(255,207,107,.9),
+      0 0 140px rgba(255,95,162,.6);
+  }
+  .lock.shake{ animation:shake .5s cubic-bezier(.36,.07,.19,.97); }
+  @keyframes shake{
+    10%,90%{ transform:translateX(-2px); }
+    20%,80%{ transform:translateX(4px); }
+    30%,50%,70%{ transform:translateX(-9px); }
+    40%,60%{ transform:translateX(9px); }
+  }
+
+  /* Tumbler reels */
+  .reels{ display:flex; gap:14px; justify-content:center; }
+  .reel{
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+  }
+  .arrow{
+    width:46px; height:30px;
+    border:none; cursor:pointer;
+    background:rgba(255,255,255,.06);
+    border-radius:10px;
+    color:var(--accent-soft);
+    font-size:16px; line-height:1;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .2s, color .2s, transform .1s;
+  }
+  .arrow:hover{ background:rgba(255,95,162,.25); color:#fff; }
+  .arrow:active{ transform:scale(.9); }
+
+  .window{
+    width:60px; height:84px;
+    border-radius:14px;
+    background:linear-gradient(180deg, #1c0635, #2c0d4d 50%, #1c0635);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.1) inset,
+      0 6px 18px rgba(0,0,0,.5) inset;
+    overflow:hidden;
+    position:relative;
+    cursor:grab;
+  }
+  .window:active{ cursor:grabbing; }
+  /* soft top/bottom fade so neighbours peek through */
+  .window::before, .window::after{
+    content:""; position:absolute; left:0; right:0; height:26px; z-index:2; pointer-events:none;
+  }
+  .window::before{ top:0;    background:linear-gradient(180deg, rgba(10,2,22,.95), transparent); }
+  .window::after { bottom:0; background:linear-gradient(0deg,   rgba(10,2,22,.95), transparent); }
+
+  .strip{
+    position:absolute; left:0; right:0; top:0;
+    display:flex; flex-direction:column; align-items:center;
+    transition:transform .28s cubic-bezier(.22,1,.36,1);
+    will-change:transform;
+  }
+  .digit{
+    height:84px; width:100%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:46px; font-weight:600;
+    color:#fff;
+    text-shadow:0 0 14px rgba(255,95,162,.7);
+  }
+
+  .unlock{
+    margin-top:4px;
+    padding:13px 46px;
+    border:none; cursor:pointer;
+    border-radius:40px;
+    font-size:17px; font-weight:600; letter-spacing:.5px;
+    color:#1a0524;
+    background:linear-gradient(135deg, var(--gold), var(--accent));
+    box-shadow:0 8px 26px rgba(255,95,162,.45);
+    transition:transform .12s ease, box-shadow .25s ease, filter .2s;
+  }
+  .unlock:hover{ filter:brightness(1.08); box-shadow:0 10px 34px rgba(255,95,162,.65); }
+  .unlock:active{ transform:translateY(2px) scale(.98); }
+
+  /* ----------------------- Canvas climax ----------------------- */
+  #heartCanvas{
+    position:fixed; inset:0; z-index:3;
+    display:block;
+    opacity:0;
+    transition:opacity 1s ease;
+  }
+  #heartCanvas.show{ opacity:1; }
+</style>
+</head>
+<body>
+
+  <!-- Twinkling star / dust background (visible during the climax) -->
+  <div id="stars"></div>
+
+  <!-- Pink doodle-hearts wallpaper behind the lock screen -->
+  <div id="heartsBg"></div>
+
+  <!-- Particle climax canvas (revealed after unlock) -->
+  <canvas id="heartCanvas"></canvas>
+
+  <!-- Heart-shaped music toggle (always on top) -->
+  <button id="musicBtn" title="Music on / off" aria-label="Toggle music">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 21s-7.5-4.9-10-9.3C-0.2 7.6 2 4 5.5 4 8 4 9.6 5.6 12 8c2.4-2.4 4-4 6.5-4C22 4 24.2 7.6 22 11.7 19.5 16.1 12 21 12 21z"/>
+    </svg>
+  </button>
+
+  <!-- Background music.  ▸ See MUSIC_SRC in the script to point this at your own file. -->
+  <audio id="bgMusic" loop preload="auto"></audio>
+
+  <!-- Phase 1: Combination lock -->
+  <div id="lockScreen">
+    <p class="hint">
+      The number of days since our first meeting…<br/>
+      or the minutes of our <b>longest call</b>.
+    </p>
+
+    <div class="lock" id="lock">
+      <div class="reels" id="reels"></div>
+      <div style="text-align:center; margin-top:24px;">
+        <button class="unlock" id="unlockBtn">Unlock&nbsp;♥</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ============================================================
+   ==================  CONFIGURATION (TWEAK ME)  ==============
+   ============================================================ */
+
+// >>> The secret unlock code. Change these 4 digits to anything you like. <<<
+const SECRET_CODE = "1234";
+
+// Particle palette — neon pink, rose gold, soft purple, warm gold.
+const PALETTE = ["#ff4d97", "#ff8fc7", "#ffb3e6", "#c77dff", "#ffcf6b", "#ffe7a8"];
+
+// Roughly how many particles to aim for (auto-tuned to fit the shape).
+const TARGET_PARTICLES = 1100;
+
+// The text that appears INSIDE the heart (two lines so it fits nicely).
+const HEART_TEXT = ["Я ТЕБЯ", "ЛЮБЛЮ"];
+
+// Particle physics
+const SPRING   = 0.014;   // attraction strength toward target (higher = snappier)
+const FRICTION = 0.86;    // velocity damping (lower = settles faster)
+const BURST_MIN = 6;      // min initial explosion speed
+const BURST_MAX = 22;     // max initial explosion speed
+
+/* ============================================================
+   ==================  BACKGROUND STAR FIELD  =================
+   ============================================================ */
+(function buildStars(){
+  const root = document.getElementById('stars');
+  const W = window.innerWidth, H = window.innerHeight;
+
+  // Twinkling stars
+  for(let i=0;i<90;i++){
+    const s = document.createElement('div');
+    s.className = 'star';
+    const size = Math.random()*2.4 + 0.8;
+    s.style.width = s.style.height = size+'px';
+    s.style.left = Math.random()*100+'%';
+    s.style.top  = Math.random()*100+'%';
+    s.style.animationDuration = (2.5 + Math.random()*4)+'s';
+    s.style.animationDelay = (Math.random()*5)+'s';
+    root.appendChild(s);
+  }
+  // Slow glowing dust particles drifting upward
+  for(let i=0;i<18;i++){
+    const d = document.createElement('div');
+    d.className = 'dust';
+    const size = Math.random()*22 + 8;
+    d.style.width = d.style.height = size+'px';
+    d.style.left = Math.random()*100+'%';
+    d.style.top  = (100 + Math.random()*20)+'%';
+    d.style.animationDuration = (14 + Math.random()*16)+'s';
+    d.style.animationDelay = (Math.random()*16)+'s';
+    root.appendChild(d);
+  }
+})();
+
+/* ============================================================
+   ===========  PINK DOODLE-HEARTS WALLPAPER (PHASE 1)  =======
+   ============================================================ */
+(function buildHeartsBg(){
+  const bg = document.getElementById('heartsBg');
+
+  // Heart colors used in the wallpaper (deep red -> red -> pink -> white).
+  const HEART_COLORS = ['#c81e33', '#e23b4a', '#ec6d80', '#f2a3b2', '#fbe2e7', '#ffffff'];
+
+  // Hand-drawn "doodle" heart: two slightly offset strokes = sketchy look.
+  function heartSVG(color){
+    return `<svg viewBox="0 0 100 100">
+      <g fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M50 82 C30 66 12 53 12 35 C12 21 27 15 38 23 C44 27 48 33 50 39 C52 33 56 27 62 23 C73 15 88 21 88 35 C88 53 70 66 50 82 Z"/>
+        <path transform="translate(2 -1) rotate(-3 50 50) scale(0.9)" transform-origin="50 50"
+              d="M50 82 C30 66 12 53 12 35 C12 21 27 15 38 23 C44 27 48 33 50 39 C52 33 56 27 62 23 C73 15 88 21 88 35 C88 53 70 66 50 82 Z" opacity="0.55"/>
+      </g>
+    </svg>`;
+  }
+
+  function fill(){
+    bg.innerHTML = '';
+    const CELL = 118;                 // grid spacing between hearts
+    const cols = Math.ceil(window.innerWidth  / CELL) + 2;
+    const rows = Math.ceil(window.innerHeight / CELL) + 2;
+    for(let r=0; r<rows; r++){
+      for(let c=0; c<cols; c++){
+        const h = document.createElement('div');
+        h.className = 'doodle';
+        const offset = (r % 2) ? CELL/2 : 0;            // brick / staggered layout
+        const jitterX = (Math.random()-0.5)*18;
+        const jitterY = (Math.random()-0.5)*18;
+        h.style.left = (c*CELL + offset - CELL + jitterX) + 'px';
+        h.style.top  = (r*CELL - CELL + jitterY) + 'px';
+        const rot = (Math.random()-0.5)*30;             // slight tilt
+        h.style.setProperty('--rot', rot + 'deg');
+        h.style.animationDuration = (2.6 + Math.random()*2.4) + 's';
+        h.style.animationDelay = (Math.random()*3) + 's';
+        const color = HEART_COLORS[(Math.random()*HEART_COLORS.length)|0];
+        h.innerHTML = heartSVG(color);
+        bg.appendChild(h);
+      }
+    }
+  }
+  fill();
+  // Rebuild on resize so the pattern always covers the screen.
+  let rt; window.addEventListener('resize', ()=>{ clearTimeout(rt); rt=setTimeout(fill, 200); });
+})();
+
+/* ============================================================
+   ======================  MUSIC TOGGLE  =====================
+   ============================================================ */
+/*
+  >>> Asgore battle theme (Undertale) — the section where his theme
+      blends with Toriel's. Place your own audio file next to this
+      HTML and set its name below (e.g. "asgore.mp3"). <<<
+  Note: the actual track is copyrighted (© Toby Fox), so it is not
+  bundled here — supply a file you own.
+*/
+const MUSIC_SRC = "asgore.mp3";
+
+(function setupMusic(){
+  const btn   = document.getElementById('musicBtn');
+  const audio = document.getElementById('bgMusic');
+  audio.src = MUSIC_SRC;
+  audio.volume = 0.6;          // 0.0 – 1.0 starting volume
+
+  let wantPlaying = false;
+  btn.addEventListener('click', async ()=>{
+    if(wantPlaying){
+      audio.pause();
+      wantPlaying = false;
+      btn.classList.remove('playing');
+    } else {
+      try{
+        await audio.play();
+        wantPlaying = true;
+        btn.classList.add('playing');
+      }catch(err){
+        // File missing or autoplay blocked — keep the button in "off" state.
+        console.warn('Music could not start:', err);
+      }
+    }
+  });
+  // Reflect real playback state if it stops on its own.
+  audio.addEventListener('pause', ()=>{ if(!wantPlaying) btn.classList.remove('playing'); });
+})();
+
+/* ============================================================
+   ====================  PHASE 1: THE LOCK  ===================
+   ============================================================ */
+const reelsEl   = document.getElementById('reels');
+const lockEl    = document.getElementById('lock');
+const lockScreen= document.getElementById('lockScreen');
+const unlockBtn = document.getElementById('unlockBtn');
+
+const NUM_REELS = SECRET_CODE.length;
+const reels = []; // { value, strip }
+
+function buildReels(){
+  for(let i=0;i<NUM_REELS;i++){
+    const reel = document.createElement('div');
+    reel.className = 'reel';
+
+    const up = document.createElement('button');
+    up.className = 'arrow'; up.innerHTML = '▲';
+
+    const win = document.createElement('div');
+    win.className = 'window';
+
+    const strip = document.createElement('div');
+    strip.className = 'strip';
+    // Render digits 0-9, then 0 again is implicit via wrap logic.
+    for(let d=0; d<10; d++){
+      const cell = document.createElement('div');
+      cell.className = 'digit';
+      cell.textContent = d;
+      strip.appendChild(cell);
+    }
+    win.appendChild(strip);
+
+    const down = document.createElement('button');
+    down.className = 'arrow'; down.innerHTML = '▼';
+
+    reel.appendChild(up);
+    reel.appendChild(win);
+    reel.appendChild(down);
+    reelsEl.appendChild(reel);
+
+    const state = { value:0, strip };
+    reels.push(state);
+
+    const DIGIT_H = 84; // must match .digit height in CSS
+    function render(){ strip.style.transform = `translateY(${-state.value*DIGIT_H}px)`; }
+    function change(delta){
+      state.value = (state.value + delta + 10) % 10;
+      render();
+    }
+    render();
+
+    up.addEventListener('click',   ()=>change(-1));
+    down.addEventListener('click', ()=>change(+1));
+
+    // wheel support on desktop
+    win.addEventListener('wheel', (e)=>{ e.preventDefault(); change(e.deltaY>0?1:-1); }, {passive:false});
+
+    // click / tap & drag vertically
+    let dragging=false, startY=0, acc=0;
+    function down_(y){ dragging=true; startY=y; acc=0; }
+    function move_(y){
+      if(!dragging) return;
+      const dy = y - startY;
+      acc += dy; startY = y;
+      const STEP = 26; // px of drag per digit
+      while(acc <= -STEP){ change(+1); acc += STEP; }
+      while(acc >=  STEP){ change(-1); acc -= STEP; }
+    }
+    function up_(){ dragging=false; }
+
+    win.addEventListener('pointerdown', e=>{ win.setPointerCapture(e.pointerId); down_(e.clientY); });
+    win.addEventListener('pointermove', e=>move_(e.clientY));
+    win.addEventListener('pointerup',   up_);
+    win.addEventListener('pointercancel', up_);
+  }
+}
+buildReels();
+
+function currentCode(){ return reels.map(r=>r.value).join(''); }
+
+unlockBtn.addEventListener('click', ()=>{
+  if(currentCode() === SECRET_CODE){
+    onUnlockSuccess();
+  } else {
+    // Wrong → shake
+    lockEl.classList.remove('shake');
+    void lockEl.offsetWidth; // restart animation
+    lockEl.classList.add('shake');
+  }
+});
+
+let unlocked = false;
+function onUnlockSuccess(){
+  if(unlocked) return;
+  unlocked = true;
+
+  // Satisfying "click" glow on the lock
+  lockEl.classList.add('success');
+
+  // Fade out the whole lock screen + the pink wallpaper
+  setTimeout(()=>{
+    lockScreen.classList.add('hidden');
+    document.getElementById('heartsBg').classList.add('hidden');
+  }, 350);
+
+  // Reveal canvas + start the climax
+  setTimeout(()=>{
+    canvas.classList.add('show');
+    startClimax();
+  }, 850);
+}
+
+/* ============================================================
+   =============  PHASE 2: PARTICLE HEART CLIMAX  =============
+   ============================================================ */
+const canvas = document.getElementById('heartCanvas');
+const ctx = canvas.getContext('2d');
+
+let W, H, DPR;
+function resizeCanvas(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W+'px';
+  canvas.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+resizeCanvas();
+
+let particles = [];
+let started = false;
+let idleStart = 0;
+
+/* --- Build the target points by drawing the heart + text offscreen --- */
+function buildTargets(){
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const o = off.getContext('2d');
+
+  const cx = W/2, cy = H/2;
+  // Scale the heart to fit the smaller screen dimension.
+  const scale = Math.min(W, H) / 34;
+
+  // --- Heart outline (parametric curve) ---
+  o.save();
+  o.translate(cx, cy);
+  o.strokeStyle = '#fff';
+  o.lineWidth = Math.max(2, scale*0.10);
+  o.beginPath();
+  for(let t=0; t<=Math.PI*2+0.02; t+=0.01){
+    const x = 16*Math.pow(Math.sin(t),3);
+    const y = -(13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t));
+    const px = x*scale;
+    const py = y*scale - scale*1.2; // nudge up slightly for visual balance
+    if(t===0) o.moveTo(px,py); else o.lineTo(px,py);
+  }
+  o.closePath();
+  o.stroke();
+  o.restore();
+
+  // --- Text inside the heart ---
+  o.save();
+  o.fillStyle = '#fff';
+  o.textAlign = 'center';
+  o.textBaseline = 'middle';
+  const fontSize = scale * 2.0;
+  o.font = `700 ${fontSize}px 'Segoe UI', system-ui, sans-serif`;
+  const lineGap = fontSize * 1.05;
+  const startY = cy - (HEART_TEXT.length-1)*lineGap/2 + scale*0.4;
+  HEART_TEXT.forEach((line, i)=>{
+    o.fillText(line, cx, startY + i*lineGap);
+  });
+  o.restore();
+
+  // --- Sample opaque pixels into target points ---
+  const img = o.getImageData(0,0,W,H).data;
+  const raw = [];
+  let gap = 4; // sampling density (smaller = more points)
+  for(let y=0; y<H; y+=gap){
+    for(let x=0; x<W; x+=gap){
+      const a = img[(y*W + x)*4 + 3];
+      if(a > 128) raw.push({x, y});
+    }
+  }
+  // Downsample to roughly TARGET_PARTICLES for performance.
+  let targets = raw;
+  if(raw.length > TARGET_PARTICLES){
+    targets = [];
+    const stride = raw.length / TARGET_PARTICLES;
+    for(let i=0; i<raw.length; i+=stride){
+      targets.push(raw[Math.floor(i)]);
+    }
+  }
+  return targets;
+}
+
+function spawnParticles(){
+  const targets = buildTargets();
+  const cx = W/2, cy = H/2;
+  particles = targets.map(t=>{
+    const angle = Math.random()*Math.PI*2;
+    const speed = BURST_MIN + Math.random()*(BURST_MAX-BURST_MIN);
+    return {
+      x: cx, y: cy,                       // all burst from the center
+      vx: Math.cos(angle)*speed,
+      vy: Math.sin(angle)*speed,
+      tx: t.x, ty: t.y,                   // assigned target
+      color: PALETTE[(Math.random()*PALETTE.length)|0],
+      size: 1.6 + Math.random()*1.8,
+      // per-particle phase for organic breathing / twinkle
+      phase: Math.random()*Math.PI*2,
+      twSpeed: 0.6 + Math.random()*0.9,
+      glow: 7 + Math.random()*7
+    };
+  });
+}
+
+function startClimax(){
+  if(started) return;
+  started = true;
+  spawnParticles();
+  idleStart = 0;
+  requestAnimationFrame(loop);
+}
+
+let frame = 0;
+let assembled = false;
+
+function loop(){
+  frame++;
+  ctx.clearRect(0,0,W,H);
+  ctx.globalCompositeOperation = 'lighter'; // additive blending = glow build-up
+
+  // Detect when the swarm has essentially assembled (enables breathing).
+  let movingEnergy = 0;
+
+  const time = frame * 0.016;
+
+  for(let i=0; i<particles.length; i++){
+    const p = particles[i];
+
+    // Breathing / twinkle target offset once assembled (organic firefly motion).
+    let bx = 0, by = 0;
+    if(assembled){
+      const breath = Math.sin(time*0.9 + p.phase) ;
+      bx = Math.cos(p.phase)*breath*2.2;
+      by = Math.sin(p.phase)*breath*2.2;
+    }
+
+    // Spring attraction toward (target + breathing offset)
+    const dx = (p.tx + bx) - p.x;
+    const dy = (p.ty + by) - p.y;
+    p.vx += dx * SPRING;
+    p.vy += dy * SPRING;
+    p.vx *= FRICTION;
+    p.vy *= FRICTION;
+    p.x  += p.vx;
+    p.y  += p.vy;
+
+    movingEnergy += Math.abs(p.vx) + Math.abs(p.vy);
+
+    // Twinkle: vary alpha & size gently
+    const tw = 0.65 + 0.35*Math.sin(time*p.twSpeed*2 + p.phase);
+
+    ctx.beginPath();
+    ctx.shadowBlur  = p.glow;
+    ctx.shadowColor = p.color;
+    ctx.fillStyle   = p.color;
+    ctx.globalAlpha = assembled ? tw : 0.92;
+    ctx.arc(p.x, p.y, p.size*(assembled? (0.85+0.3*tw) : 1), 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+
+  // Once the average motion is low enough, switch into idle breathing mode.
+  if(!assembled && frame > 90 && movingEnergy/particles.length < 0.6){
+    assembled = true;
+  }
+
+  requestAnimationFrame(loop);
+}
+
+/* Keep everything crisp on resize / orientation change. */
+window.addEventListener('resize', ()=>{
+  resizeCanvas();
+  if(started){
+    // Re-map targets to the new layout without losing the swarm.
+    const targets = buildTargets();
+    for(let i=0; i<particles.length; i++){
+      const t = targets[i % targets.length];
+      particles[i].tx = t.x;
+      particles[i].ty = t.y;
+    }
+  }
+});
+
+/* ----- Optional: press Enter to submit the code ----- */
+window.addEventListener('keydown', e=>{
+  if(e.key === 'Enter' && !unlocked) unlockBtn.click();
+});
+</script>
+</body>
+</html>
