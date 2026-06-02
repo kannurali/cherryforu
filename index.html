@@ -257,8 +257,7 @@
   <!-- Phase 1: Combination lock -->
   <div id="lockScreen">
     <p class="hint">
-      The number of days since our first meeting…<br/>
-      or the minutes of our <b>longest call</b>.
+      Мари, мы встретились в этот день
     </p>
 
     <div class="lock" id="lock">
@@ -275,13 +274,15 @@
    ============================================================ */
 
 // >>> The secret unlock code. Change these 4 digits to anything you like. <<<
-const SECRET_CODE = "1234";
+const SECRET_CODE = "2605";
 
 // Particle palette — neon pink, rose gold, soft purple, warm gold.
 const PALETTE = ["#ff4d97", "#ff8fc7", "#ffb3e6", "#c77dff", "#ffcf6b", "#ffe7a8"];
 
 // Roughly how many particles to aim for (auto-tuned to fit the shape).
-const TARGET_PARTICLES = 1100;
+// Split between the heart outline and the text so the words stay legible.
+const HEART_PARTICLES = 650;   // particles tracing the heart outline
+const TEXT_PARTICLES  = 1250;  // particles forming the words (denser = sharper text)
 
 // The text that appears INSIDE the heart (two lines so it fits nicely).
 const HEART_TEXT = ["Я ТЕБЯ", "ЛЮБЛЮ"];
@@ -548,67 +549,78 @@ let particles = [];
 let started = false;
 let idleStart = 0;
 
+/* Sample the opaque pixels of an offscreen canvas, then evenly downsample
+   them to roughly `cap` points (keeps the shape crisp but performant). */
+function samplePixels(o, gap, cap){
+  const img = o.getImageData(0,0,W,H).data;
+  const raw = [];
+  for(let y=0; y<H; y+=gap){
+    for(let x=0; x<W; x+=gap){
+      if(img[(y*W + x)*4 + 3] > 128) raw.push({x, y});
+    }
+  }
+  if(raw.length <= cap) return raw;
+  const out = [];
+  const stride = raw.length / cap;
+  for(let i=0; i<raw.length; i+=stride) out.push(raw[Math.floor(i)]);
+  return out;
+}
+
 /* --- Build the target points by drawing the heart + text offscreen --- */
 function buildTargets(){
-  const off = document.createElement('canvas');
-  off.width = W; off.height = H;
-  const o = off.getContext('2d');
-
   const cx = W/2, cy = H/2;
   // Scale the heart to fit the smaller screen dimension.
   const scale = Math.min(W, H) / 34;
 
-  // --- Heart outline (parametric curve) ---
-  o.save();
-  o.translate(cx, cy);
-  o.strokeStyle = '#fff';
-  o.lineWidth = Math.max(2, scale*0.10);
-  o.beginPath();
+  /* ----- Heart outline (parametric curve) on its own layer ----- */
+  const heartCv = document.createElement('canvas');
+  heartCv.width = W; heartCv.height = H;
+  const h = heartCv.getContext('2d');
+  h.save();
+  h.translate(cx, cy);
+  h.strokeStyle = '#fff';
+  h.lineWidth = Math.max(2, scale*0.10);
+  h.beginPath();
   for(let t=0; t<=Math.PI*2+0.02; t+=0.01){
     const x = 16*Math.pow(Math.sin(t),3);
     const y = -(13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t));
     const px = x*scale;
     const py = y*scale - scale*1.2; // nudge up slightly for visual balance
-    if(t===0) o.moveTo(px,py); else o.lineTo(px,py);
+    if(t===0) h.moveTo(px,py); else h.lineTo(px,py);
   }
-  o.closePath();
-  o.stroke();
-  o.restore();
+  h.closePath();
+  h.stroke();
+  h.restore();
 
-  // --- Text inside the heart ---
-  o.save();
+  /* ----- Text inside the heart on its own layer ----- */
+  const textCv = document.createElement('canvas');
+  textCv.width = W; textCv.height = H;
+  const o = textCv.getContext('2d');
   o.fillStyle = '#fff';
   o.textAlign = 'center';
   o.textBaseline = 'middle';
-  const fontSize = scale * 2.0;
-  o.font = `700 ${fontSize}px 'Segoe UI', system-ui, sans-serif`;
-  const lineGap = fontSize * 1.05;
+
+  // Start from a size relative to the heart, then SHRINK to fit the heart's
+  // inner width — this keeps the words inside the heart on narrow phones.
+  const maxWidth = Math.min(W, H) * 0.50; // usable width inside the heart lobes
+  let fontSize = scale * 2.1;
+  const measure = ()=>{
+    o.font = `800 ${fontSize}px 'Segoe UI', system-ui, sans-serif`;
+    return Math.max(...HEART_TEXT.map(line => o.measureText(line).width));
+  };
+  while(measure() > maxWidth && fontSize > 8){ fontSize -= 1; }
+
+  const lineGap = fontSize * 1.08;
   const startY = cy - (HEART_TEXT.length-1)*lineGap/2 + scale*0.4;
   HEART_TEXT.forEach((line, i)=>{
     o.fillText(line, cx, startY + i*lineGap);
   });
-  o.restore();
 
-  // --- Sample opaque pixels into target points ---
-  const img = o.getImageData(0,0,W,H).data;
-  const raw = [];
-  let gap = 4; // sampling density (smaller = more points)
-  for(let y=0; y<H; y+=gap){
-    for(let x=0; x<W; x+=gap){
-      const a = img[(y*W + x)*4 + 3];
-      if(a > 128) raw.push({x, y});
-    }
-  }
-  // Downsample to roughly TARGET_PARTICLES for performance.
-  let targets = raw;
-  if(raw.length > TARGET_PARTICLES){
-    targets = [];
-    const stride = raw.length / TARGET_PARTICLES;
-    for(let i=0; i<raw.length; i+=stride){
-      targets.push(raw[Math.floor(i)]);
-    }
-  }
-  return targets;
+  /* ----- Sample each layer with its own density / budget ----- */
+  // Text is sampled finer and gets the larger budget so it reads clearly.
+  const heartPts = samplePixels(h, 4, HEART_PARTICLES);
+  const textPts  = samplePixels(o, 2, TEXT_PARTICLES);
+  return heartPts.concat(textPts);
 }
 
 function spawnParticles(){
